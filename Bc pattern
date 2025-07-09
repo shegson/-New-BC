@@ -1,0 +1,520 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+void main() {
+  runApp(const BcPatternPredictorApp());
+}
+
+class BcPatternPredictorApp extends StatelessWidget {
+  const BcPatternPredictorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'BC Pattern Predictor',
+      theme: ThemeData(
+        primarySwatch: Colors.blueGrey,
+        useMaterial3: true,
+      ),
+      home: const GameSelectorScreen(),
+    );
+  }
+}
+
+class NotificationService {
+  static final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+
+  static Future<void> initialize() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initializationSettings = InitializationSettings(
+      android: androidSettings,
+    );
+    
+    await _flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        // Handle notification tap
+      },
+    );
+  }
+
+  static Future<void> showNotification(String message) async {
+    const androidDetails = AndroidNotificationDetails(
+      'bc_predictor_channel',
+      'BC Predictor Alerts',
+      channelDescription: 'Notifications for BC Pattern Predictor alerts',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    
+    const notificationDetails = NotificationDetails(android: androidDetails);
+    
+    await _flutterLocalNotificationsPlugin.show(
+      0,
+      'BC Pattern Alert',
+      message,
+      notificationDetails,
+    );
+  }
+}
+
+class GameSelectorScreen extends StatefulWidget {
+  const GameSelectorScreen({super.key});
+
+  @override
+  State<GameSelectorScreen> createState() => _GameSelectorScreenState();
+}
+
+class _GameSelectorScreenState extends State<GameSelectorScreen> {
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.initialize();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Select Game'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Choose a game to start pattern analysis:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 40),
+              _buildGameButton(
+                context,
+                'Crash',
+                Icons.trending_down,
+                Colors.red,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CrashLoggerScreen()),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildGameButton(
+                context,
+                'Dice',
+                Icons.casino,
+                Colors.green,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const DiceLoggerScreen()),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGameButton(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onPressed,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white),
+        label: Text(
+          title,
+          style: const TextStyle(fontSize: 18, color: Colors.white),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CrashLoggerScreen extends StatefulWidget {
+  const CrashLoggerScreen({super.key});
+
+  @override
+  State<CrashLoggerScreen> createState() => _CrashLoggerScreenState();
+}
+
+class _CrashLoggerScreenState extends State<CrashLoggerScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final List<double> _results = [];
+  String _advice = '';
+  final int _minResultsForAnalysis = 4;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _analyzePattern() {
+    if (_results.length < _minResultsForAnalysis) {
+      setState(() {
+        _advice = 'Enter at least $_minResultsForAnalysis results to analyze.';
+      });
+      return;
+    }
+
+    // Analyze recent results for patterns
+    int lowStreak = 0;
+    int highStreak = 0;
+    
+    for (var result in _results.reversed) {
+      if (result < 2.0) {
+        lowStreak++;
+        highStreak = 0;
+      } else if (result > 5.0) {
+        highStreak++;
+        lowStreak = 0;
+      } else {
+        break;
+      }
+    }
+
+    setState(() {
+      if (lowStreak >= 4) {
+        _advice = '🚨 Low streak detected ($lowStreak consecutive). Consider staking at 2x.';
+        NotificationService.showNotification(_advice);
+      } else if (highStreak >= 3) {
+        _advice = '📈 High streak detected ($highStreak consecutive). Consider conservative betting.';
+        NotificationService.showNotification(_advice);
+      } else {
+        final avg = _results.take(5).fold(0.0, (sum, val) => sum + val) / 5;
+        _advice = 'No clear pattern. Average: ${avg.toStringAsFixed(2)}x. Use flat bet.';
+      }
+    });
+  }
+
+  void _addResult() {
+    final value = double.tryParse(_controller.text);
+    if (value != null && value > 0) {
+      setState(() {
+        _results.add(value);
+        _controller.clear();
+        _analyzePattern();
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid number greater than 0')),
+      );
+    }
+  }
+
+  void _resetResults() {
+    setState(() {
+      _results.clear();
+      _advice = '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Crash Logger'),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _controller,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Enter Crash Result',
+                        hintText: 'e.g., 1.5, 2.3, 10.5',
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _addResult(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _addResult,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Result'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _resetResults,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (_advice.isNotEmpty)
+              Card(
+                color: _advice.contains('🚨') ? Colors.red.shade50 : Colors.blue.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    _advice,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 20),
+            if (_results.isNotEmpty)
+              Expanded(
+                child: Card(
+                  child: Column(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'Recent Results',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: _results.length,
+                          reverse: true,
+                          itemBuilder: (context, index) {
+                            final result = _results[_results.length - 1 - index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: result < 2.0 ? Colors.red : Colors.green,
+                                child: Text('${_results.length - index}'),
+                              ),
+                              title: Text('${result.toStringAsFixed(2)}x'),
+                              trailing: result < 2.0 
+                                  ? const Icon(Icons.trending_down, color: Colors.red)
+                                  : const Icon(Icons.trending_up, color: Colors.green),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class DiceLoggerScreen extends StatefulWidget {
+  const DiceLoggerScreen({super.key});
+
+  @override
+  State<DiceLoggerScreen> createState() => _DiceLoggerScreenState();
+}
+
+class _DiceLoggerScreenState extends State<DiceLoggerScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final List<int> _results = [];
+  String _advice = '';
+  final int _minResultsForAnalysis = 5;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _analyzePattern() {
+    if (_results.length < _minResultsForAnalysis) {
+      setState(() {
+        _advice = 'Enter at least $_minResultsForAnalysis results to analyze.';
+      });
+      return;
+    }
+
+    final recentResults = _results.take(8).toList();
+    final lowCount = recentResults.where((r) => r < 30).length;
+    final highCount = recentResults.where((r) => r > 70).length;
+    final midCount = recentResults.where((r) => r >= 30 && r <= 70).length;
+
+    setState(() {
+      if (lowCount >= 3) {
+        _advice = '🎲 Low numbers streak ($lowCount/8). Consider betting "Over 70"';
+        NotificationService.showNotification(_advice);
+      } else if (highCount >= 3) {
+        _advice = '🎲 High numbers streak ($highCount/8). Consider betting "Under 49.5"';
+        NotificationService.showNotification(_advice);
+      } else if (midCount >= 5) {
+        _advice = '🎲 Mid-range pattern detected. Consider extreme bets (Under 20 or Over 80)';
+      } else {
+        final avg = recentResults.fold(0, (sum, val) => sum + val) / recentResults.length;
+        _advice = 'No clear trend. Average: ${avg.toStringAsFixed(1)}. Use flat bet.';
+      }
+    });
+  }
+
+  void _addResult() {
+    final value = int.tryParse(_controller.text);
+    if (value != null && value >= 0 && value <= 100) {
+      setState(() {
+        _results.add(value);
+        _controller.clear();
+        _analyzePattern();
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid number between 0 and 100')),
+      );
+    }
+  }
+
+  void _resetResults() {
+    setState(() {
+      _results.clear();
+      _advice = '';
+    });
+  }
+
+  Color _getResultColor(int result) {
+    if (result < 30) return Colors.red;
+    if (result > 70) return Colors.green;
+    return Colors.orange;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dice Logger'),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _controller,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Enter Dice Roll Result (0–100)',
+                        hintText: 'e.g., 25, 50, 75',
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _addResult(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _addResult,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Result'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _resetResults,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (_advice.isNotEmpty)
+              Card(
+                color: _advice.contains('🎲') ? Colors.green.shade50 : Colors.blue.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    _advice,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 20),
+            if (_results.isNotEmpty)
+              Expanded(
+                child: Card(
+                  child: Column(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'Recent Results',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: _results.length,
+                          reverse: true,
+                          itemBuilder: (context, index) {
+                            final result = _results[_results.length - 1 - index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: _getResultColor(result),
+                                child: Text('${_results.length - index}'),
+                              ),
+                              title: Text('$result'),
+                              trailing: Text(
+                                result < 30 ? 'Low' : result > 70 ? 'High' : 'Mid',
+                                style: TextStyle(
+                                  color: _getResultColor(result),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
